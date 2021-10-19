@@ -1,17 +1,38 @@
 #!/usr/bin/env python
-import requests
 import html2text
 from config import Config
 from feedgen.feed import FeedGenerator
 from datetime import datetime, timezone
+
+from studip_sync.config import CONFIG
+from studip_sync.logins import LoginError
+from studip_sync.session import Session, SessionError
+from studip_sync.parsers import ParserError
 
 ACTIVITY_URL = Config.BASE_URL + '/studip/api.php/user/' + Config.USER_ID + '/activitystream'
 PAYLOAD = {'filtertype': Config.SELECTED_FILTERS}
 
 
 def main():
-    activities = fetch_activitystream()
+    session = create_session()
+    print("Fetching stream...")
+
+    activities = fetch_activitystream(session)
     generate_feed(activities)
+
+
+def create_session():
+    with Session(base_url=CONFIG.base_url) as studip_sync_session:
+        print("Logging in...")
+        try:
+            studip_sync_session.login(CONFIG.auth_type, CONFIG.auth_type_data, CONFIG.username,
+                          CONFIG.password)
+        except (LoginError, ParserError) as e:
+            print("Login failed!")
+            print(e)
+            return 1
+
+    return studip_sync_session.session
 
 
 def generate_feed(json):
@@ -30,9 +51,12 @@ def generate_feed(json):
     fg.atom_file("/dev/stdout")
 
 
-def fetch_activitystream():
-    r = requests.get(ACTIVITY_URL, params=PAYLOAD, cookies=Config.AUTH_COOKIES)
-    return r.json()
+def fetch_activitystream(session):
+    with session.get(ACTIVITY_URL, params=PAYLOAD) as response:
+        if not response.ok:
+            raise SessionError("Could not fetch activities!")
+
+        return response.json()
 
 
 if __name__ == '__main__':

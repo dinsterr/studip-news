@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name='studip-news',
     version='1.0',
-    packages=['requests', 'html2text', 'feedgen'],
+    packages=['requests', 'html2text', 'feedgen', 'studip-sync'],
     url='',
     license='',
     author='David Schrenk',
