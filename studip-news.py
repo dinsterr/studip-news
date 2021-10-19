@@ -62,7 +62,7 @@ def generate_feed(json):
         fe = fg.add_entry()
         fe.id(entry['id'])
         fe.title(entry['title'])
-        fe.content(html2text.html2text(entry['content']), type="CDATA")
+        fe.content(html2text.html2text(entry['content']))
         fe.link({'href': Config.BASE_URL + list(entry['object_url'].keys())[0]})
         fe.published(datetime.fromtimestamp(int(entry['mkdate']), timezone.utc))
 
