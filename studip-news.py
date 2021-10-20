@@ -1,34 +1,35 @@
 #!/usr/bin/env python
 import re
 
-import html2text
+from bs4 import BeautifulSoup
 from config import Config
 from feedgen.feed import FeedGenerator
 from datetime import datetime, timezone
 
-from studip_sync.config import CONFIG
+from studip_sync.config import CONFIG as STUDIP_SYNC_CONFIG
 from studip_sync.logins import LoginError
 from studip_sync.session import Session, SessionError
 from studip_sync.parsers import ParserError
 
 PAYLOAD = {'filtertype': Config.SELECTED_FILTERS}
+USER_ID_REGEX = re.compile('STUDIP.ActivityFeed.user_id = \'(.+?)\';')
+START_PAGE_URL = STUDIP_SYNC_CONFIG.base_url + "dispatch.php/start"
+ACTIVITY_STREAM_URL = STUDIP_SYNC_CONFIG.base_url + "api.php/user/{0}/activitystream"
 
 
 def main():
     session = create_session()
-    userid = extract_userid(session)
-    print("Fetching stream...")
-
-    activities = fetch_activitystream(session, userid)
+    activities = fetch_activity_stream(session)
     generate_feed(activities)
 
 
 def create_session():
-    with Session(base_url=CONFIG.base_url) as studip_sync_session:
+    with Session(base_url=STUDIP_SYNC_CONFIG.base_url) as studip_sync_session:
         print("Logging in...")
         try:
-            studip_sync_session.login(CONFIG.auth_type, CONFIG.auth_type_data, CONFIG.username,
-                                      CONFIG.password)
+            studip_sync_session.login(STUDIP_SYNC_CONFIG.auth_type, STUDIP_SYNC_CONFIG.auth_type_data,
+                                      STUDIP_SYNC_CONFIG.username,
+                                      STUDIP_SYNC_CONFIG.password)
         except (LoginError, ParserError) as e:
             print("Login failed!")
             print(e)
@@ -37,41 +38,45 @@ def create_session():
     return studip_sync_session.session
 
 
-def extract_userid(session):
+def extract_user_id(session):
     if Config.USER_ID:
         return Config.USER_ID
 
-    with session.get(Config.BASE_URL + "/studip/dispatch.php/start") as response:
+    with session.get(START_PAGE_URL) as response:
         if not response.ok:
-            raise SessionError("Could not open page for userid extraction!")
+            raise SessionError("Could not open page for user id extraction!")
 
-    match = re.search('STUDIP.ActivityFeed.user_id = \'(.+?)\';', response.text)
+    match = USER_ID_REGEX.search(response.text)
     if match:
-        userid = match.group(1)
-        return userid
+        return match.group(1)
     else:
         raise ParserError("Could not extract userid!")
 
 
 def generate_feed(json):
+    print("Generating feed...")
     fg = FeedGenerator()
-    fg.id(Config.BASE_URL)
-    fg.title('StudIp Activities')
+    fg.id(STUDIP_SYNC_CONFIG.base_url)
+    fg.title('STUD.IP Activities')
 
     for entry in json:
         fe = fg.add_entry()
         fe.id(entry['id'])
         fe.title(entry['title'])
-        fe.content(html2text.html2text(entry['content']))
-        fe.link({'href': Config.BASE_URL + list(entry['object_url'].keys())[0]})
+        fe.content(BeautifulSoup(entry['content']).get_text())
+        fe.link({'href': STUDIP_SYNC_CONFIG.base_url + list(entry['object_url'].keys())[0]})
         fe.published(datetime.fromtimestamp(int(entry['mkdate']), timezone.utc))
 
     fg.atom_file("/dev/stdout", pretty=True)
 
 
-def fetch_activitystream(session, userid):
-    with session.get(Config.BASE_URL + '/studip/api.php/user/' + userid + '/activitystream',
-                     params=PAYLOAD) as response:
+def generate_user_id_url(session):
+    return ACTIVITY_STREAM_URL.format(extract_user_id(session))
+
+
+def fetch_activity_stream(session):
+    print("Fetching activity stream...")
+    with session.get(generate_user_id_url(session), params=PAYLOAD) as response:
         if not response.ok:
             raise SessionError("Could not fetch activities!")
 

@@ -1,4 +1,3 @@
-html2text~=2020.1.16
 feedgen~=0.9.0
-setuptools~=50.3.2
+beautifulsoup4==4.10.0
 git+git://github.com/studip-sync/studip-sync/@cfc2488a0149f7e01c96dfd6514e065a9c70bce5
